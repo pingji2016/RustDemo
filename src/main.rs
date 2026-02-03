@@ -23,8 +23,7 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 // 错误与中间件
 use thiserror::Error;
-use tower::timeout::TimeoutLayer;
-use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 // 并发计数器与时间
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -32,7 +31,6 @@ use std::time::Instant;
 // 应用状态（用于指标与观测）
 // - start：服务启动时间（计算运行时长）
 // - hits_*：各端点访问计数（AtomicU64 并发安全、开销低）
-#[derive(Clone)]
 struct AppState {
     start: Instant,
     hits_root: AtomicU64,
@@ -90,10 +88,8 @@ async fn main() {
     });
 
     // 路由与中间件说明：
-    // - CompressionLayer：启用 gzip/br 压缩，降低响应体体积
     // - CorsLayer::permissive：开发环境放开跨域；生产需按域名/方法细化
     // - TraceLayer：为每个请求生成 span，输出请求/响应耗时
-    // - TimeoutLayer(10s)：防止接口长时间占用资源
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
@@ -102,10 +98,8 @@ async fn main() {
         .route("/parallel", get(parallel))
         .route("/metrics", get(metrics))
         .with_state(state)
-        .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .layer(TimeoutLayer::new(Duration::from_secs(10)));
+        .layer(TraceLayer::new_for_http());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     info!("listening on http://{}", addr);
