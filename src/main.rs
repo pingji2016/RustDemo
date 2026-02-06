@@ -27,7 +27,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 // 并发计数器与时间
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-
+use tower_http::services::ServeDir;
 // 应用状态（用于指标与观测）
 // - start：服务启动时间（计算运行时长）
 // - hits_*：各端点访问计数（AtomicU64 并发安全、开销低）
@@ -90,6 +90,9 @@ async fn main() {
     // 路由与中间件说明：
     // - CorsLayer::permissive：开发环境放开跨域；生产需按域名/方法细化
     // - TraceLayer：为每个请求生成 span，输出请求/响应耗时
+    let cwd = std::env::current_dir().unwrap_or_default();
+    info!("serving static files from: {:?}", cwd);
+
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
@@ -97,6 +100,7 @@ async fn main() {
         .route("/echo", post(echo))
         .route("/parallel", get(parallel))
         .route("/metrics", get(metrics))
+        .fallback_service(ServeDir::new(cwd))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());

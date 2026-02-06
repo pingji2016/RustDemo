@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Rust HTTP Demo UI</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    section { margin-bottom: 1.5rem; }
+    input[type=text] { width: 20rem; }
+    button { margin-left: .5rem; }
+    pre { background: #f5f5f5; padding: .5rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Rust HTTP Demo UI</h1>
+
+  <!-- 1. 健康检查 -->
+  <section>
+    <h2>1. 健康检查</h2>
+    <button id="btnHealth">GET /health</button>
+    <pre id="outHealth"></pre>
+  </section>
+
+  <!-- 2. 求和 -->
+  <section>
+    <h2>2. 求和</h2>
+    <label>nums: <input id="inpSum" type="text" placeholder="1,2,3" /></label>
+    <button id="btnSum">GET /sum</button>
+    <pre id="outSum"></pre>
+  </section>
+
+  <!-- 3. 回显 -->
+  <section>
+    <h2>3. 回显</h2>
+    <label>message: <input id="inpEcho" type="text" placeholder="hello" /></label>
+    <button id="btnEcho">POST /echo</button>
+    <pre id="outEcho"></pre>
+  </section>
+
+  <!-- 4. 并发示例 -->
+  <section>
+    <h2>4. 并发示例</h2>
+    <label>n: <input id="inpPara" type="number" min="1" max="32" value="5" /></label>
+    <button id="btnPara">GET /parallel</button>
+    <pre id="outPara"></pre>
+  </section>
+
+  <!-- 5. 指标 -->
+  <section>
+    <h2>5. 指标</h2>
+    <button id="btnMetrics">GET /metrics</button>
+    <pre id="outMetrics"></pre>
+  </section>
+
+  <script>
+    const BASE = 'http://127.0.0.1:3000';
+
+    async function getJson(path) {
+      const res = await fetch(BASE + path);
+      return res.json();
+    }
+
+    async function postJson(path, body) {
+      const res = await fetch(BASE + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      return res.json();
+    }
+
+    // 1. 健康检查
+    btnHealth.onclick = async () => {
+      outHealth.textContent = JSON.stringify(await getJson('/health'), null, 2);
+    };
+
+    // 2. 求和
+    btnSum.onclick = async () => {
+      const nums = inpSum.value.trim();
+      if (!nums) { alert('请输入 nums'); return; }
+      outSum.textContent = JSON.stringify(await getJson(`/sum?nums=${encodeURIComponent(nums)}`), null, 2);
+    };
+
+    // 3. 回显
+    btnEcho.onclick = async () => {
+      const msg = inpEcho.value.trim();
+      if (!msg) { alert('请输入 message'); return; }
+      outEcho.textContent = JSON.stringify(await postJson('/echo', { message: msg }), null, 2);
+    };
+
+    // 4. 并发示例
+    btnPara.onclick = async () => {
+      const n = inpPara.value;
+      outPara.textContent = JSON.stringify(await getJson(`/parallel?n=${n}`), null, 2);
+    };
+
+    // 5. 指标
+    btnMetrics.onclick = async () => {
+      outMetrics.textContent = JSON.stringify(await getJson('/metrics'), null, 2);
+    };
+  </script>
+</body>
+</html>
