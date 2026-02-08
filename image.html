@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Rust WASM 图片处理</title>
+    <style>
+        body { font-family: system-ui; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .container { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
+        .box { flex: 1; min-width: 300px; border: 1px solid #ccc; padding: 10px; border-radius: 8px; }
+        img { max-width: 100%; display: block; margin-top: 10px; }
+        button { padding: 8px 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .error { color: red; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Rust WASM 图片灰度化示例</h1>
+    
+    <div style="margin-bottom: 20px;">
+        <input type="file" id="upload" accept="image/png, image/jpeg" />
+        <button id="btnProcess" disabled>转为灰度图 (WASM)</button>
+    </div>
+
+    <div id="status">正在加载 WASM 模块...</div>
+    <div id="error" class="error"></div>
+
+    <div class="container">
+        <div class="box">
+            <h3>原图</h3>
+            <img id="imgOriginal" />
+        </div>
+        <div class="box">
+            <h3>处理结果 (Rust 生成)</h3>
+            <img id="imgResult" />
+        </div>
+    </div>
+
+    <script type="module">
+        // 导入 WASM 模块（注意路径：需要 wasm-pack build 后才会生成）
+        import init, { grayscale } from './wasm-lib/pkg/wasm_lib.js';
+
+        const upload = document.getElementById('upload');
+        const btnProcess = document.getElementById('btnProcess');
+        const status = document.getElementById('status');
+        const errorDiv = document.getElementById('error');
+        const imgOriginal = document.getElementById('imgOriginal');
+        const imgResult = document.getElementById('imgResult');
+
+        let wasmLoaded = false;
+
+        // 1. 初始化 WASM
+        async function loadWasm() {
+            try {
+                await init();
+                wasmLoaded = true;
+                status.textContent = 'WASM 模块加载成功，请上传图片。';
+                if (upload.files.length > 0) btnProcess.disabled = false;
+            } catch (e) {
+                console.error(e);
+                status.textContent = 'WASM 加载失败！请确认是否已运行 wasm-pack build。';
+                status.style.color = 'red';
+            }
+        }
+
+        loadWasm();
+
+        // 2. 监听文件选择
+        upload.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 显示原图预览
+            imgOriginal.src = URL.createObjectURL(file);
+            imgResult.src = '';
+            errorDiv.textContent = '';
+            
+            if (wasmLoaded) btnProcess.disabled = false;
+        };
+
+        // 3. 处理图片
+        btnProcess.onclick = async () => {
+            const file = upload.files[0];
+            if (!file) return;
+
+            try {
+                status.textContent = '正在处理...';
+                btnProcess.disabled = true;
+
+                // 读取文件为 ArrayBuffer
+                const start = performance.now();
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+
+                // 调用 Rust 函数
+                // 注意：这里可能会抛出异常（如果 Rust 返回 Err）
+                const resultBytes = grayscale(bytes);
+                const end = performance.now();
+
+                // 显示结果
+                const blob = new Blob([resultBytes], { type: 'image/png' });
+                imgResult.src = URL.createObjectURL(blob);
+                
+                status.textContent = `处理完成！耗时: ${(end - start).toFixed(2)}ms`;
+            } catch (e) {
+                console.error(e);
+                errorDiv.textContent = `处理出错: ${e}`;
+                status.textContent = '处理失败';
+            } finally {
+                btnProcess.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

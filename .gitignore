@@ -1,5 +1,6 @@
 /target/
-target/*
 /.idea/
-target/*
-/.idea/
+
+# WASM build artifacts
+/wasm-lib/pkg/
+/wasm-lib/target/
