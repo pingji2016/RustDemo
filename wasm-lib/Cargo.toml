@@ -9,3 +9,11 @@ crate-type = ["cdylib"]
 [dependencies]
 wasm-bindgen = "0.2"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+
+# 优化配置：减小 WASM 体积
+[profile.release]
+opt-level = "z"     # 优化体积 ("s" 也是体积优化，"z" 更激进)
+lto = true          # 开启链接时优化 (Link Time Optimization)
+codegen-units = 1   # 降低并行度以提高优化质量
+panic = "abort"     # panic 时直接终止，不进行栈展开 (减小体积)
+strip = true        # 自动移除调试符号 (需 Rust 1.59+)

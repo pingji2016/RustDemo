@@ -96,6 +96,9 @@
                 const resultBytes = grayscale(bytes);
                 const end = performance.now();
 
+                // 释放之前生成的 URL，避免内存泄漏
+                if (imgResult.src) URL.revokeObjectURL(imgResult.src);
+                
                 // 显示结果
                 const blob = new Blob([resultBytes], { type: 'image/png' });
                 imgResult.src = URL.createObjectURL(blob);
