@@ -13,3 +13,9 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 thiserror = "1"
 tower = { version = "0.5", features = ["timeout"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# 生产环境构建优化
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

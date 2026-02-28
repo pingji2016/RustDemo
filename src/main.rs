@@ -28,9 +28,8 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use tower_http::services::ServeDir;
+
 // 应用状态（用于指标与观测）
-// - start：服务启动时间（计算运行时长）
-// - hits_*：各端点访问计数（AtomicU64 并发安全、开销低）
 struct AppState {
     start: Instant,
     hits_root: AtomicU64,
@@ -38,6 +37,23 @@ struct AppState {
     hits_sum: AtomicU64,
     hits_echo: AtomicU64,
     hits_parallel: AtomicU64,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            hits_root: AtomicU64::new(0),
+            hits_health: AtomicU64::new(0),
+            hits_sum: AtomicU64::new(0),
+            hits_echo: AtomicU64::new(0),
+            hits_parallel: AtomicU64::new(0),
+        }
+    }
+
+    fn uptime(&self) -> u64 {
+        self.start.elapsed().as_secs()
+    }
 }
 
 // 健康检查返回体（简单 JSON）
@@ -66,6 +82,22 @@ struct ParallelResult {
     ms: u64,
 }
 
+// 指标响应结构体
+#[derive(Serialize)]
+struct MetricsResponse {
+    uptime_seconds: u64,
+    hits: Hits,
+}
+
+#[derive(Serialize)]
+struct Hits {
+    root: u64,
+    health: u64,
+    sum: u64,
+    echo: u64,
+    parallel: u64,
+}
+
 // 程序入口：
 // 1) 初始化日志（INFO 级别）
 // 2) 构建 Router：注册端点、注入状态、挂载中间件
@@ -78,14 +110,7 @@ async fn main() {
         .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 
-    let state = Arc::new(AppState {
-        start: Instant::now(),
-        hits_root: AtomicU64::new(0),
-        hits_health: AtomicU64::new(0),
-        hits_sum: AtomicU64::new(0),
-        hits_echo: AtomicU64::new(0),
-        hits_parallel: AtomicU64::new(0),
-    });
+    let state = Arc::new(AppState::new());
 
     // 路由与中间件说明：
     // - CorsLayer::permissive：开发环境放开跨域；生产需按域名/方法细化
@@ -196,7 +221,7 @@ struct ParallelQuery {
 // - 任务：为每个 i 启动一个异步任务，sleep 不同毫秒模拟耗时
 // - 结果：返回每个任务的 index/value/ms，按完成顺序收集（非阻塞）
 // - 展示：Tokio 并发与 JoinSet 收集的用法
-async fn parallel(State(app): State<Arc<AppState>>, Query(q): Query<ParallelQuery>) -> impl IntoResponse {
+async fn parallel(State(app): State<Arc<AppState>>, Query(q): Query<ParallelQuery>) -> Result<impl IntoResponse, AppError> {
     app.hits_parallel.fetch_add(1, Ordering::Relaxed);
     let n = q.n.unwrap_or(5).min(32);
     let mut tasks = JoinSet::new();
@@ -213,24 +238,27 @@ async fn parallel(State(app): State<Arc<AppState>>, Query(q): Query<ParallelQuer
     }
     let mut results = Vec::with_capacity(n);
     while let Some(res) = tasks.join_next().await {
-        results.push(res.unwrap());
+        match res {
+            Ok(val) => results.push(val),
+            Err(e) => return Err(AppError::Internal(format!("Task failed: {}", e))),
+        }
     }
-    Json(results)
+    Ok(Json(results))
 }
 
 // 指标端点：返回运行时长与各端点命中次数（便于监控与压测）
 async fn metrics(State(app): State<Arc<AppState>>) -> impl IntoResponse {
-    let uptime = app.start.elapsed().as_secs();
-    Json(serde_json::json!({
-        "uptime_seconds": uptime,
-        "hits": {
-            "root": app.hits_root.load(Ordering::Relaxed),
-            "health": app.hits_health.load(Ordering::Relaxed),
-            "sum": app.hits_sum.load(Ordering::Relaxed),
-            "echo": app.hits_echo.load(Ordering::Relaxed),
-            "parallel": app.hits_parallel.load(Ordering::Relaxed)
-        }
-    }))
+    let response = MetricsResponse {
+        uptime_seconds: app.uptime(),
+        hits: Hits {
+            root: app.hits_root.load(Ordering::Relaxed),
+            health: app.hits_health.load(Ordering::Relaxed),
+            sum: app.hits_sum.load(Ordering::Relaxed),
+            echo: app.hits_echo.load(Ordering::Relaxed),
+            parallel: app.hits_parallel.load(Ordering::Relaxed),
+        },
+    };
+    Json(response)
 }
 
 // 优雅关闭：监听 Ctrl+C，触发服务的 graceful shutdown
